@@ -1,0 +1,9 @@
+# Visual Studio Code Folder
+.vscode/
+
+# Python Cache Folders
+__pycache__/
+
+# Static Files
+old_main.py
+test.py
