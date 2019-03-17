@@ -4,7 +4,7 @@
 </div>
 
 ## Detalhes
-Este é um projeto remake, isto é, uma versão refatorada do código **PokeZon**, desenvolvido com o proposito de aprender, e claro criar um jogo original do zero.
+Desenvolvido com o proposito de aprender, e claro criar um jogo original do zero.
 O visual do Game é similar a jogos de RPG 2D, desenvolvidos nas engines **Game Maker** e **Construct**, neste código é priorizado a organização e "leveza".
 
 ## Desenvolvimento
@@ -24,7 +24,8 @@ _(Em breve... vídeo de demonstração)_
 Antes de tudo, você precisa se certificar que tem os modulos instalado em sua maquina, os modulos necessarios são:
 
 - Python (3.4+)
-- PyGame (1.9.4+)
+- PyGame (1.9.4)
+- PyYAML (1.0.1)
 
 ## Links
 * [Meu Twitter](https://twitter.com/KugiHaito)
