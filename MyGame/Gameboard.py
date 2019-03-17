@@ -2,27 +2,31 @@
 
 Modulo principal, responsavel pelas configurações basicas do jogo
 """
-import os, time, csv
+import os
 from pathlib import Path
 
 import pygame
 from pygame.locals import *
 
-from .Mapper import Map
+from .Map import Mapper
 from .Entity import Entity
+from .Block import Block
+
 from .Enums.Directions import Direction
+from .Enums.BlockTypes import BlockType
+from .Enums.EntityTypes import EntityType
 
 
 class Game():
-    
-    def __init__(self, name, icon, size: tuple, tile_size, resources:dict):
+
+    def __init__(self, name, icon, size: tuple, tile_size, resources: dict):
         """
         Initialize the gameboard to run the game
-        :name: Name of game
-        :icon: Icon path
-        :size:tuple: Window size
-        :tile_size: Tile size
-        :resources:dict: Resources path
+            :name: Name of game
+            :icon: Icon path
+            :size:tuple: Window size
+            :tile_size: Tile size
+            :resources:dict: Resources path
         """
         super(Game, self).__init__()
         self.name = name
@@ -34,8 +38,10 @@ class Game():
             "entity": None,
             "map": None
         }
+        self.player = self.selected['entity']
         self.create_screen()
         self.load_resources()
+        self.selectDefault(0, 0)
 
     def create_screen(self):
         """
@@ -46,6 +52,7 @@ class Game():
         pygame.display.set_caption(self.name)
         self.ico = pygame.image.load(f"./{self.icon}")
         pygame.display.set_icon(self.ico)
+        self.clock = pygame.time.Clock()
 
     def load_resources(self):
         """
@@ -56,89 +63,119 @@ class Game():
             "update": self.update,
             "font": self.resources['font']
         }
-        # load entities
+        self.fake = Entity(
+            name='fake',
+            type='fake',
+            position=[32,32],
+            sprites={},
+            gameboard=self.gameboard)
+        self.load_entities()
+        self.load_tilemaps()
+        self.load_maps()
+
+    def load_entities(self):
+        """
+        Load Entities
+        """
         self.entities = []
         self._entities = {}
-        for dirname, dirnames, filenames in os.walk(self.resources['entities']):
-            for subdirname in dirnames:
-                entity_path = os.path.join(dirname, subdirname)
-                entity_sides = [x.stem for x in Path(entity_path).glob('*.png')]
-                if entity_sides != []:
-                    entity = {}
-                    sides = {}
-                    for side in entity_sides:
-                        sides[side] = (f"{entity_path}/{side}.png")
-                    entity['type']  = dirname.split('\\')[1]
-                    entity['sides'] = sides
-                    self._entities[subdirname] = entity
-        for e, value in self._entities.items():
-            self.entities.append(Entity(e, [2*32, 2*32], value['sides'], self.gameboard))
-        # load tilemaps
+        for _dir, _dirs, filenames in os.walk(self.resources['entities']):
+            for sub_dir in _dirs:
+                e_path = os.path.join(_dir, sub_dir)
+                e_sprites = [x.stem for x in Path(e_path).glob('*.png')]
+                if e_sprites != []:
+                    sprites = {}
+                    for sprite in e_sprites:
+                        sprites[sprite] = (f"{e_path}/{sprite}.png")
+                    entity = {
+                        'type': _dir.replace('/', '\\').split('\\')[-1],
+                        'sprites': sprites
+                    }
+                    self._entities[sub_dir] = entity
+        for name, value in self._entities.items():
+            e = Entity(
+                name=name,
+                type=[e for e in EntityType if e.name == value['type'].upper()][0],
+                position=[2*self.tile_size, 2*self.tile_size],
+                sprites=value['sprites'],
+                gameboard=self.gameboard)
+            self.entities.append(e)
+
+    def load_tilemaps(self):
+        """
+        Load Tilemaps
+        """
+        res_tilemap = self.resources['tilemaps']
         self.tilemaps = {}
-        for dirname, dirnames, filenames in os.walk(self.resources['tilemaps']):
+        for _dir, _dirs, filenames in os.walk(res_tilemap):
             tilemap = {}
-            for subdirname in dirnames:
-                tilemap_path = os.path.join(dirname, subdirname)
+            for sub_dir in _dirs:
+                tilemap_path = os.path.join(_dir, sub_dir)
                 blocks = [x.stem for x in Path(tilemap_path).glob('*.png')]
                 tilemap['blocks'] = {}
                 i = 0
                 for block in blocks:
-                    tilemap['blocks'][i] = {
-                        'name': block.split('_')[0],
-                        'path': (f"{self.resources['tilemaps']}/{subdirname}/{block}.png"),
-                        'solid': True if block.split('_')[1] == "solid" else False
-                    }
+                    bl = Block(
+                        name=block.split('_')[0],
+                        tile_size=self.tile_size,
+                        source=f"{res_tilemap}/{sub_dir}/{block}.png",
+                        type=[b for b in BlockType if b.name in block.upper()][0])
+                    tilemap['blocks'][i] = bl
                     i += 1
-                self.tilemaps[subdirname] = tilemap
-        # load maps
-        self.maps = []
-        self.matrixs = {}
-        for dirname, dirnames, filenames in os.walk(self.resources['maps']):
-            for filename in filenames:
-                mapx = []
-                with open(f"{self.resources['maps']}/{filename}", newline='') as csvfile:
-                    spamreader = csv.reader(csvfile, delimiter=',')
-                    for line in spamreader:
-                        mapx.append(line)
-                self.matrixs[filename.split('.')[0]] = mapx
-        for name, value in self.matrixs.items():
-            self.maps.append(Map(name, self.tile_size, value, self.tilemaps[name.split("_")[0]]['blocks'], self.gameboard))
+                self.tilemaps[sub_dir] = tilemap
 
-    def selectDefault(self, mapp:int, entity:int):
+    def load_maps(self):
         """
-        select default items
-        :param mapp:int: default first map
-        :param entity:int: default entity player
+        Load Maps
+        """
+        res_map = self.resources['maps']
+        self.maps = []
+        for _dir, _dirs, filenames in os.walk(res_map):
+            for filename in filenames:
+                self.maps.append(Mapper(
+                    name=filename, 
+                    path=res_map, 
+                    tile_size=self.tile_size,
+                    blocks=self.tilemaps[filename.split("_")[0]]['blocks'], 
+                    gameboard=self.gameboard))
+
+    def selectDefault(self, mapp: int, entity: int):
+        """
+        Select default items
+            :param mapp:int: default first map
+            :param entity:int: default entity player
         """
         self.selected.update({
             'map': self.maps[mapp],
-            'entity': self.entities[entity]
+            'entity': [e for e in self.entities if e.type == EntityType.PLAYER][entity]
         })
+        self.player = self.selected['entity']
 
     def try_move(self, direction):
         """
         check if the next position is not solid
-        :param posmat:Position of the entity in the matrix
-        :param direction:Direction of attempted walking
+            :param posmat:Position of the entity in the matrix
+            :param direction:Direction of attempted walking
         """
-        e = self.selected['entity']
-        fake = Entity('fake', [(e.posmat[0]*self.tile_size), (e.posmat[1]*self.tile_size)], {}, self.gameboard)
-        fake.move(direction)
-        x = int(fake.position[1]/self.tile_size)
-        y = int(fake.position[0]/self.tile_size)
+        self.fake.position = [
+            (self.player.posmat[0]*self.tile_size),
+            (self.player.posmat[1]*self.tile_size)]
+        self.fake.move(direction)
+        x, y = int(self.fake.position[1]/self.tile_size), int(self.fake.position[0]/self.tile_size)
         tilemap = self.tilemaps[self.selected['map'].name.split('_')[0]]
-        point = int(self.selected['map'].matrix[x][y])
-        if tilemap['blocks'][point]['solid']:
+        point = self.selected['map'].map['map'][x][y]
+        block = [b for b in tilemap['blocks'].values() if b.type.name == point['type'].upper()][0]
+        if block.is_solid:
             return False
         return True
-                
+
     def update(self):
         """
         Update Screen
         """
         pygame.display.flip()
         self.selected['map'].display()
-        self.selected['entity'].display()
+        self.player.display()
 
     def stop(self):
         """
@@ -165,6 +202,9 @@ class Game():
             for direction, pressed in self.press_directions.items():
                 if pressed:
                     if self.try_move(direction.value):
-                        self.selected['entity'].move(direction.value)
-            # stop?
+                        self.player.move(direction.value)
+                    else:
+                        self.player.sprite_update(direction.value)
+                        
             self.stop()
+            self.clock.tick(30)

@@ -1,11 +1,11 @@
-from MyGame import Gameboard
+from MyGame.Gameboard import Game
 
-game = Gameboard.Game(
-    name = "Next Hunter",
-    icon = "resources/img/icon.png",
-    size = (1280, 640),
-    tile_size = 32,
-    resources = {
+game = Game(
+    name="Next Hunter",
+    icon="resources/img/icon.png",
+    size=(1280, 640),
+    tile_size=32,
+    resources={
         "maps": "resources/maps",
         "tilemaps": "resources/img/tilemaps",
         "entities": "resources/img/entities",
@@ -13,7 +13,5 @@ game = Gameboard.Game(
     }
 )
 
-game.selectDefault(1, 2)
-
-if __name__ == '__main__':
-	game.run()
+if __name__ == "__main__":
+    game.run()
