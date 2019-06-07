@@ -7,6 +7,7 @@ import yaml
 import pygame
 from pygame.locals import *
 
+from .Block import Block
 from .Enums.BlockTypes import BlockType
 
 
@@ -17,13 +18,17 @@ class Mapper(object):
         self.name = name
         self.path = path
         self.tile_size = tile_size
-        self.blocks = blocks
+        self._blocks = blocks
+        self.blocks = pygame.sprite.Group()
         self.gameboard = gameboard
-        self.map = self.read()
+        self.map = self.read()['map']
+        self.width = len([column for column in self.map[0]])
+        self.height = len([line for line in self.map])
+        self.load_blocks()
 
     def read(self):
         """
-            Read Map file
+        Read Map file
         """
         with open(f"{self.path}/{self.name}") as stream:
             try:
@@ -32,14 +37,25 @@ class Mapper(object):
                 print(err)
         return False
 
-    def display(self):
+    def load_blocks(self):
         """
-            Display Map on screen
+        Load blocks of map
         """
-        self.width = len([column for column in self.map['map'][0]])
-        self.height = len([line for line in self.map['map']])
         for x in range(self.width):
             for y in range(self.height):
-                block = [b for b in self.blocks.values() if b.type.name == self.map['map'][y][x]['type'].upper()][0]
-                position = [(x * self.tile_size), (y * self.tile_size)]
-                self.gameboard['screen'].blit(block.surface, position)
+                block = [b for b in self._blocks if self.map[y][x]['type'].upper() == b['type'].name][0]
+                self.blocks.add(
+                    Block(
+                        block['name'], block['data'],
+                        block['type'], [x, y],
+                        self.tile_size,
+                        True if self.map[y][x].get('spawnpoint') else False ))
+        return self.blocks
+
+
+    def display(self):
+        """
+        Display Map on screen
+        """
+        self.blocks.update()
+        self.blocks.draw(self.gameboard['screen'])

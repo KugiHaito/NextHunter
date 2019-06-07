@@ -3,6 +3,8 @@
 Modulo principal, responsavel pelas configurações basicas do jogo
 """
 import os
+import io
+from zipfile import ZipFile
 from pathlib import Path
 
 import pygame
@@ -34,6 +36,7 @@ class Game():
         self.size = size
         self.tile_size = tile_size
         self.resources = resources
+        self.texturepack = 'default'
         self.selected = {
             "entity": None,
             "map": None
@@ -58,86 +61,67 @@ class Game():
         """
         Load the resources of game
         """
-        self.gameboard = {
-            "screen": self.screen,
-            "update": self.update,
-            "font": self.resources['font']
-        }
-        self.fake = Entity(
+        self.load_texture()
+
+    def load_texture(self):
+        """
+        Load texture, pack of images, songs, etc...
+        """
+        self.texture = {}
+        with ZipFile(f'{self.resources}/{self.texturepack}.zip', 'r') as texture:
+            for item in [i for i in texture.namelist() if not 'README' in i]:
+                items, is_dir = item.split('/'), texture.getinfo(item).is_dir()
+                if not is_dir:
+                    if len(items) == 4:pack, group, entity, sprite = items;self.texture[pack][group][entity].append(sprite)
+                    if len(items) == 2:pack, i = items;self.texture[pack].append(i if pack == 'blocks' else pygame.font.Font(io.BytesIO(texture.read(item)), 12))
+                else:
+                    if len(items) == 2:pack, _ = items;self.texture[pack] = [] if pack in ['blocks', 'HUD'] else {}
+                    if len(items) == 3:pack, group, _ = items;self.texture[pack].update({group: {}})
+                    if len(items) == 4:pack, group, entity, _ = items;self.texture[pack][group].update({entity: []})
+
+            # TODO: make something for not need ``self.gameboard``
+            self.gameboard = {
+                "screen": self.screen,
+                "update": self.update,
+                "font": self.texture['HUD']
+            }
+            self.fake = Entity(
             name='fake',
             type='fake',
             position=[32,32],
             sprites={},
             gameboard=self.gameboard)
-        self.load_entities()
-        self.load_tilemaps()
-        self.load_maps()
 
-    def load_entities(self):
-        """
-        Load Entities
-        """
-        self.entities = []
-        self._entities = {}
-        for _dir, _dirs, filenames in os.walk(self.resources['entities']):
-            for sub_dir in _dirs:
-                e_path = os.path.join(_dir, sub_dir)
-                e_sprites = [x.stem for x in Path(e_path).glob('*.png')]
-                if e_sprites != []:
-                    sprites = {}
-                    for sprite in e_sprites:
-                        sprites[sprite] = (f"{e_path}/{sprite}.png")
-                    entity = {
-                        'type': _dir.replace('/', '\\').split('\\')[-1],
-                        'sprites': sprites
-                    }
-                    self._entities[sub_dir] = entity
-        for name, value in self._entities.items():
-            e = Entity(
-                name=name,
-                type=[e for e in EntityType if e.name == value['type'].upper()][0],
-                position=[2*self.tile_size, 2*self.tile_size],
-                sprites=value['sprites'],
-                gameboard=self.gameboard)
-            self.entities.append(e)
+            self.blocks = []
+            for block in self.texture['blocks']:
+                self.blocks.append({
+                    'name': block.split('.')[0],
+                    'path': f'blocks/{block}',
+                    'type': [b for b in BlockType if b.name in block.upper()][0],
+                    'data': pygame.image.load(io.BytesIO(texture.read(f'blocks/{block}'))) })
+            self.entities = []
 
-    def load_tilemaps(self):
-        """
-        Load Tilemaps
-        """
-        res_tilemap = self.resources['tilemaps']
-        self.tilemaps = {}
-        for _dir, _dirs, filenames in os.walk(res_tilemap):
-            tilemap = {}
-            for sub_dir in _dirs:
-                tilemap_path = os.path.join(_dir, sub_dir)
-                blocks = [x.stem for x in Path(tilemap_path).glob('*.png')]
-                tilemap['blocks'] = {}
-                i = 0
-                for block in blocks:
-                    bl = Block(
-                        name=block.split('_')[0],
+            res_map, self.maps = 'resources/maps/', []
+            for _dir, _dirs, filenames in os.walk(res_map):
+                for filename in filenames:
+                    self.maps.append(Mapper(
+                        name=filename, 
+                        path=res_map, 
                         tile_size=self.tile_size,
-                        source=f"{res_tilemap}/{sub_dir}/{block}.png",
-                        type=[b for b in BlockType if b.name in block.upper()][0])
-                    tilemap['blocks'][i] = bl
-                    i += 1
-                self.tilemaps[sub_dir] = tilemap
+                        blocks=self.blocks,
+                        gameboard=self.gameboard))
 
-    def load_maps(self):
-        """
-        Load Maps
-        """
-        res_map = self.resources['maps']
-        self.maps = []
-        for _dir, _dirs, filenames in os.walk(res_map):
-            for filename in filenames:
-                self.maps.append(Mapper(
-                    name=filename, 
-                    path=res_map, 
-                    tile_size=self.tile_size,
-                    blocks=self.tilemaps[filename.split("_")[0]]['blocks'], 
-                    gameboard=self.gameboard))
+            for group, entities in self.texture['entities'].items():
+                for entity, sprites in entities.items():
+                    self.entities.append(Entity(
+                        name=entity,
+                        type=[e for e in EntityType if e.name == group.upper()][0],
+                        # TODO: Set Map spawnpoint to entity (Player)
+                        position=[2*self.tile_size, 2*self.tile_size],
+                        sprites=[{
+                            'name': sprite.split('.')[0],
+                            'data': io.BytesIO(texture.read(f'entities/{group}/{entity}/{sprite}'))} for sprite in sprites],
+                        gameboard=self.gameboard))
 
     def selectDefault(self, mapp: int, entity: int):
         """
@@ -162,9 +146,9 @@ class Game():
             (self.player.posmat[1]*self.tile_size)]
         self.fake.move(direction)
         x, y = int(self.fake.position[1]/self.tile_size), int(self.fake.position[0]/self.tile_size)
-        tilemap = self.tilemaps[self.selected['map'].name.split('_')[0]]
-        point = self.selected['map'].map['map'][x][y]
-        block = [b for b in tilemap['blocks'].values() if b.type.name == point['type'].upper()][0]
+        point = self.selected['map'].map[x][y]
+        # TODO: Optimize listing of blocks
+        block = [b for b in self.selected['map'].blocks.sprites() if b.type.name == point['type'].upper()][0]
         if block.is_solid:
             return False
         return True
@@ -175,7 +159,8 @@ class Game():
         """
         pygame.display.flip()
         self.selected['map'].display()
-        self.player.display()
+        # TODO: Insert Entities in a pygame.sprite.Group(), for display them with draw() method
+        self.selected['entity'].display()
 
     def stop(self):
         """
@@ -191,7 +176,7 @@ class Game():
         Run! In-Game
         """
         while True:
-            self.update()
+            
             self.press = pygame.key.get_pressed()
             self.press_directions = {
                 Direction.UP:    (self.press[K_w] or self.press[K_UP]),
@@ -199,6 +184,7 @@ class Game():
                 Direction.LEFT:  (self.press[K_a] or self.press[K_LEFT]),
                 Direction.RIGHT: (self.press[K_d] or self.press[K_RIGHT])
             }
+
             for direction, pressed in self.press_directions.items():
                 if pressed:
                     if self.try_move(direction.value):
@@ -207,4 +193,5 @@ class Game():
                         self.player.sprite_update(direction.value)
                         
             self.stop()
+            self.update()
             self.clock.tick(30)
